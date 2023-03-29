@@ -28,7 +28,6 @@ openai.api_key = os.environ['CHATGPT_API_KEY']
 LINE_CHANNEL_ACCESS_TOKEN   = os.environ['LINE_CHANNEL_ACCESS_TOKEN']
 
 BUCKET_NAME = 'alphajinsei-bucket'
-OBJECT_KEY_NAME = 'chatGPT_messages.json'
 
 s3_client = boto3.client('s3')
 
