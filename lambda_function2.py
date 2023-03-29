@@ -94,7 +94,7 @@ def lambda_handler(event, context):
         REQUEST_MESSAGE = [
             {
                 'type': 'text',
-                'text': str(conversation_history) 
+                'text': str(conversation_history) + "\n" + "現在の会話数：" + str(len(conversation_history))
             }
         ]
     
@@ -113,7 +113,7 @@ def lambda_handler(event, context):
         REQUEST_MESSAGE = [
             {
                 'type': 'text',
-                'text': str(conversation_history) 
+                'text': str(conversation_history) + "\n" + "現在の会話数：" + str(len(conversation_history))
             }
         ]
     
@@ -139,6 +139,13 @@ def lambda_handler(event, context):
         
         #  会話履歴にChatGPTからの返答を追加
         conversation_history.append({"role": "system", "content": answer_from_chatGPT})
+
+        # 古い会話履歴を削除(ChatGPT APIに送信する会話履歴の長さ制限を回避)
+        # ただし、最初の「あなたは有能なアシスタントです」を除く(コンテキストを残しておくため)
+        # 「あなたは有能なアシスタントです」 + 会話15往復 で31
+        if len(conversation_history)  >= 31:
+            conversation_history.pop(1)
+            conversation_history.pop(1)
         
         # 会話履歴を書き込み
         s3_client.put_object(Bucket=BUCKET_NAME, Key=OBJECT_KEY_NAME, Body=json.dumps(conversation_history)) 
