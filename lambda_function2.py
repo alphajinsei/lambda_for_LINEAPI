@@ -68,13 +68,20 @@ def lambda_handler(event, context):
     userId = json.loads(event['body'])['events'][0]['source']['userId']
 
     # 個人の会話履歴ファイル名を設定
-    #OBJECT_KEY_NAME = 'chatGPT_messages' + userId + '.json'
+    OBJECT_KEY_NAME = 'chatGPT_messages_' + userId + '.json'
 
-    # 会話履歴ファイルが存在しない場合、作成する
+    # 会話履歴を呼び出してresponseに格納
+    try:
+        response = s3_client.get_object(Bucket=BUCKET_NAME, Key=OBJECT_KEY_NAME)
+    
+    # 会話履歴が存在しない場合、新規に作成したうえでresponseに内容を格納（新規ユーザを想定）
+    except s3_client.exceptions.NoSuchKey as e:
+        logger.info(e)
+        conversation_history =  [{"role": "system", "content": "あなたは有能なアシスタントです"}]
+        s3_client.put_object(Bucket=BUCKET_NAME, Key=OBJECT_KEY_NAME, Body=json.dumps(conversation_history)) 
+        response = s3_client.get_object(Bucket=BUCKET_NAME, Key=OBJECT_KEY_NAME)
 
-
-    # 会話履歴の呼び出し
-    response = s3_client.get_object(Bucket=BUCKET_NAME, Key=OBJECT_KEY_NAME)
+    # 会話履歴の内容を内部処理用に成形
     body = response['Body'].read()
     conversation_history = json.loads(body)
     
