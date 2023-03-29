@@ -30,7 +30,7 @@ LINE_CHANNEL_ACCESS_TOKEN   = os.environ['LINE_CHANNEL_ACCESS_TOKEN']
 BUCKET_NAME = 'alphajinsei-bucket'
 OBJECT_KEY_NAME = 'chatGPT_messages.json'
 
-s3 = boto3.resource('s3')
+s3_client = boto3.client('s3')
 
 REQUEST_URL = 'https://api.line.me/v2/bot/message/reply'
 REQUEST_METHOD = 'POST'
@@ -40,8 +40,8 @@ REQUEST_HEADERS = {
 }
 
 
-def lambda_handler(event, context):
-    # リクエストの内容をログに出力
+def logging_request(event):
+
     logger.info("event")
     logger.info(event)
     
@@ -50,21 +50,37 @@ def lambda_handler(event, context):
     
     logger.info("recieved_text")
     logger.info(json.loads(event['body'])['events'][0]['message']['text'])
-    
+
+    logger.info("userId")
+    logger.info(json.loads(event['body'])['events'][0]['source']['userId'])
+
+
+
+def lambda_handler(event, context):
+
+    # リクエストの内容をログに出力
+    logging_request(event)
     
     # LINEから入力されたメッセージを取得
     recieved_text = json.loads(event['body'])['events'][0]['message']['text']
-    
+
+    # 送信元のLINEユーザIDを取得
+    userId = json.loads(event['body'])['events'][0]['source']['userId']
+
+    # 個人の会話履歴ファイル名を設定
+    #OBJECT_KEY_NAME = 'chatGPT_messages' + userId + '.json'
+
+    # 会話履歴ファイルが存在しない場合、作成する
+
+
     # 会話履歴の呼び出し
-    bucket = s3.Bucket(BUCKET_NAME)
-    obj = bucket.Object(OBJECT_KEY_NAME)
-    response = obj.get()    
+    response = s3_client.get_object(Bucket=BUCKET_NAME, Key=OBJECT_KEY_NAME)
     body = response['Body'].read()
-    body_json = json.loads(body)
+    conversation_history = json.loads(body)
     
-    logger.info("body_json")
-    logger.info(type(body_json))
-    logger.info(body_json)
+    logger.info("conversation_history")
+    logger.info(type(conversation_history))
+    logger.info(conversation_history)
     
     # リスト一覧取得の場合
     if recieved_text == 'list':
@@ -72,39 +88,39 @@ def lambda_handler(event, context):
         REQUEST_MESSAGE = [
             {
                 'type': 'text',
-                'text': str(body_json) 
+                'text': str(conversation_history) 
             }
         ]
     
     # 会話履歴を削除する場合
     elif recieved_text == 'clear':
         # 会話履歴を初期化
-        body_json =  [{"role": "system", "content": "あなたは有能なアシスタントです"}]
-        obj.put(Body=json.dumps(body_json)) 
+        conversation_history =  [{"role": "system", "content": "あなたは有能なアシスタントです"}]
+        s3_client.put_object(Bucket=BUCKET_NAME, Key=OBJECT_KEY_NAME, Body=json.dumps(conversation_history)) 
         
         # list再取得
-        response = obj.get()    
+        response = s3_client.get_object(Bucket=BUCKET_NAME, Key=OBJECT_KEY_NAME)
         body = response['Body'].read()
-        body_json = json.loads(body)
+        conversation_history = json.loads(body)
         
         # レスポンスの組み立て    
         REQUEST_MESSAGE = [
             {
                 'type': 'text',
-                'text': str(body_json) 
+                'text': str(conversation_history) 
             }
         ]
     
     # 会話を継続する場合    
     else: 
         # 会話履歴にLINEから入力されたメッセージを追加
-        body_json.append({"role": "user", "content": recieved_text})
+        conversation_history.append({"role": "user", "content": recieved_text})
     
         
         # chat GPT呼び出し
         completion = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",  # ChatGPT APIを使用するには'gpt-3.5-turbo'などを指定
-            messages = body_json
+            messages = conversation_history
             #messages=[
             #    {"role": "system", "content": "あなたは有能なアシスタントです"},
             #    {"role": "user", "content": recieved_text},
@@ -116,10 +132,10 @@ def lambda_handler(event, context):
         answer_from_chatGPT = completion["choices"][0]["message"]["content"]
         
         #  会話履歴にChatGPTからの返答を追加
-        body_json.append({"role": "system", "content": answer_from_chatGPT})
+        conversation_history.append({"role": "system", "content": answer_from_chatGPT})
         
         # 会話履歴を書き込み
-        obj.put(Body=json.dumps(body_json)) 
+        s3_client.put_object(Bucket=BUCKET_NAME, Key=OBJECT_KEY_NAME, Body=json.dumps(conversation_history)) 
         
     
         # レスポンスの組み立て    
